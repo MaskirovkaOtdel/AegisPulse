@@ -1,0 +1,78 @@
+server:
+  port: 8080
+  admin_port: 8082
+  read_timeout_ms: 5000
+  write_timeout_ms: 10000
+
+upstream:
+  target_url: "http://upstream:8081"
+  timeout_ms: 1500
+  jitter:
+    enabled: false
+    percentage: 30
+    min_delay_ms: 200
+    max_delay_ms: 500
+
+tiers:
+  free:
+    soft_limit: 20
+    hard_limit: 25
+    window_seconds: 60
+    replay_window_seconds: 60
+  pro:
+    soft_limit: 100
+    hard_limit: 140
+    window_seconds: 60
+    replay_window_seconds: 300
+  enterprise:
+    soft_limit: 1000
+    hard_limit: 1300
+    window_seconds: 60
+    replay_window_seconds: 600
+
+monetization:
+  cost_per_credit: 0.005
+  currency: "USD"
+
+cache:
+  ttl_seconds: 300
+  cleanup_interval_seconds: 60
+  circuit_breaker:
+    max_consecutive_failures: 3
+    failure_latency_ms: 1000
+    cooldown_seconds: 10
+
+redis:
+  addr: "redis:6379"
+  password: ""
+  db: 0
+  stream_events: "stream:gateway:events"
+  stream_dlq: "stream:gateway:dlq"
+
+postgres:
+  host: "postgres"
+  port: 5432
+  user: "aegis"
+  password: "aegis_secure_password"
+  dbname: "aegispulse"
+  sslmode: "disable"
+
+security:
+  master_key: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  header_api_key: "X-API-Key"
+  header_signature: "X-Aegis-Signature"
+
+webhooks:
+  worker_concurrency: 4
+  max_retries: 3
+  retry_base_delay_ms: 1000
+  sinks:
+    generic:
+      enabled: true
+      endpoint: "http://webhook-receiver:8083/webhook/generic"
+    discord:
+      enabled: true
+      endpoint: "http://webhook-receiver:8083/webhook/discord"
+    slack:
+      enabled: true
+      endpoint: "http://webhook-receiver:8083/webhook/slack"

@@ -1,0 +1,22 @@
+# Binaries and executables
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test artifacts and logs
+*.log
+*.out
+cover.out
+
+# IDEs and editors
+.idea/
+.vscode/
+*.swp
+*~
+
+# Environment local secrets
+.env
+.env.local

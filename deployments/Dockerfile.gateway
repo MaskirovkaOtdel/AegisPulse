@@ -1,0 +1,16 @@
+FROM golang:1.22-alpine AS builder
+
+WORKDIR /app
+COPY go.mod ./
+# If go.sum exists, copy it
+COPY . .
+RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /gateway ./cmd/gateway
+
+FROM alpine:3.19
+RUN apk add --no-cache ca-certificates tzdata
+WORKDIR /app
+COPY --from=builder /gateway /app/gateway
+COPY config/config.yaml /app/config/config.yaml
+
+EXPOSE 8080 8082
+ENTRYPOINT ["/app/gateway", "--config=/app/config/config.yaml", "--headless"]

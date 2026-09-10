@@ -1,0 +1,12 @@
+FROM golang:1.22-alpine AS builder
+
+WORKDIR /app
+COPY go.mod ./
+COPY . .
+RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /mockwebhook ./cmd/mockwebhook
+
+FROM alpine:3.19
+WORKDIR /app
+COPY --from=builder /mockwebhook /app/mockwebhook
+EXPOSE 8083
+ENTRYPOINT ["/app/mockwebhook", "--port=8083"]

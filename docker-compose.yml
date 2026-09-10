@@ -1,0 +1,112 @@
+version: '3.8'
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: deployments/Dockerfile.gateway
+    ports:
+      - "8080:8080"
+      - "8082:8082"
+    environment:
+      - PORT=8080
+      - REDIS_ADDR=redis:6379
+      - UPSTREAM_URL=http://upstream:8081
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=aegis
+      - POSTGRES_PASSWORD=aegis_secure_password
+      - POSTGRES_DB=aegispulse
+      - AEGIS_MASTER_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      upstream:
+        condition: service_started
+      webhook-receiver:
+        condition: service_started
+    networks:
+      - aegis-net
+    restart: unless-stopped
+
+  upstream:
+    build:
+      context: .
+      dockerfile: deployments/Dockerfile.upstream
+    ports:
+      - "8081:8081"
+    networks:
+      - aegis-net
+    restart: unless-stopped
+
+  webhook-receiver:
+    build:
+      context: .
+      dockerfile: deployments/Dockerfile.webhook
+    ports:
+      - "8083:8083"
+    networks:
+      - aegis-net
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 2s
+      retries: 5
+    networks:
+      - aegis-net
+
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=aegis
+      - POSTGRES_PASSWORD=aegis_secure_password
+      - POSTGRES_DB=aegispulse
+    volumes:
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aegis -d aegispulse"]
+      interval: 3s
+      timeout: 2s
+      retries: 5
+    networks:
+      - aegis-net
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deployments/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks:
+      - aegis-net
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./deployments/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deployments/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      - aegis-net
+
+networks:
+  aegis-net:
+    driver: bridge

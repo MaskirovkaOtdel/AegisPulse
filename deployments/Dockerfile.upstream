@@ -1,0 +1,12 @@
+FROM golang:1.22-alpine AS builder
+
+WORKDIR /app
+COPY go.mod ./
+COPY . .
+RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /mockupstream ./cmd/mockupstream
+
+FROM alpine:3.19
+WORKDIR /app
+COPY --from=builder /mockupstream /app/mockupstream
+EXPOSE 8081
+ENTRYPOINT ["/app/mockupstream", "--port=8081"]
