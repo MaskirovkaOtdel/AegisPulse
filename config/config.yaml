@@ -5,7 +5,7 @@ server:
   write_timeout_ms: 10000
 
 upstream:
-  target_url: "http://upstream:8081"
+  target_url: "http://localhost:8081"
   timeout_ms: 1500
   jitter:
     enabled: false
@@ -43,14 +43,14 @@ cache:
     cooldown_seconds: 10
 
 redis:
-  addr: "redis:6379"
+  addr: "" # Standalone in-memory mode by default; set to localhost:6379 or use Docker Compose
   password: ""
   db: 0
   stream_events: "stream:gateway:events"
   stream_dlq: "stream:gateway:dlq"
 
 postgres:
-  host: "postgres"
+  host: "" # Standalone in-memory mode by default; set to localhost or use Docker Compose
   port: 5432
   user: "aegis"
   password: "aegis_secure_password"
