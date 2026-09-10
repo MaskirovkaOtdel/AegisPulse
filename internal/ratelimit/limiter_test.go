@@ -101,3 +101,59 @@ func TestInMemoryLimiter_GlobalBurstFreeze(t *testing.T) {
 		t.Fatalf("expected BURST after unfreezing, got %s", res.Status)
 	}
 }
+
+func TestTokenBucketLimiter(t *testing.T) {
+	ctx := context.Background()
+	tb := NewTokenBucketLimiter()
+
+	apiKey := "test-tb-key"
+	tier := "pro"
+	softLimit := int64(3)
+	hardLimit := int64(5)
+	windowSec := int64(60)
+
+	// Requests 1, 2, 3 should be NORMAL
+	for i := 1; i <= 3; i++ {
+		res, err := tb.Check(ctx, apiKey, tier, softLimit, hardLimit, windowSec)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if res.Status != "NORMAL" {
+			t.Fatalf("expected NORMAL, got %s on req %d", res.Status, i)
+		}
+	}
+
+	// Request 4 and 5 should be BURST
+	for i := 4; i <= 5; i++ {
+		res, err := tb.Check(ctx, apiKey, tier, softLimit, hardLimit, windowSec)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if res.Status != "BURST" {
+			t.Fatalf("expected BURST, got %s on req %d", res.Status, i)
+		}
+	}
+
+	// Request 6 should be BLOCKED
+	res, err := tb.Check(ctx, apiKey, tier, softLimit, hardLimit, windowSec)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Status != "BLOCKED" {
+		t.Fatalf("expected BLOCKED after hard limit, got %s", res.Status)
+	}
+
+	// Test Global Burst Freeze
+	tb2 := NewTokenBucketLimiter()
+	apiKey2 := "test-tb-freeze"
+	// Consume normal quota
+	for i := 1; i <= 3; i++ {
+		_, _ = tb2.Check(ctx, apiKey2, tier, softLimit, hardLimit, windowSec)
+	}
+	tb2.SetGlobalBurstFreeze(true)
+	res, _ = tb2.Check(ctx, apiKey2, tier, softLimit, hardLimit, windowSec)
+	if res.Status != "BLOCKED" {
+		t.Fatalf("expected BLOCKED when burst freeze is active, got %s", res.Status)
+	}
+}
+
