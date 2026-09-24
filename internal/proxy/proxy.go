@@ -20,6 +20,7 @@ import (
 	"aegispulse/internal/crypto"
 	"aegispulse/internal/demo"
 	"aegispulse/internal/metrics"
+	"aegispulse/internal/middleware"
 	"aegispulse/internal/ratelimit"
 	"aegispulse/internal/storage"
 	"aegispulse/internal/webhook"
@@ -37,6 +38,7 @@ type GatewayProxy struct {
 	reverseProxy   *httputil.ReverseProxy
 	upstreamURL    *url.URL
 	jitterOverride atomic.Int32 // -1: use config, 0: disabled, 1: enabled
+	cors           *middleware.CORSMiddleware
 }
 
 func NewGatewayProxy(
@@ -65,6 +67,7 @@ func NewGatewayProxy(
 		webhookEngine:  webhookEngine,
 		metrics:        m,
 		upstreamURL:    targetURL,
+		cors:           middleware.NewCORSMiddleware(middleware.DefaultCORSConfig()),
 	}
 	gp.jitterOverride.Store(-1) // default to config
 
@@ -127,6 +130,14 @@ func (gp *GatewayProxy) IsJitterActive() bool {
 }
 
 func (gp *GatewayProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if gp.cors != nil {
+		gp.cors.Wrap(http.HandlerFunc(gp.serveInternal)).ServeHTTP(w, r)
+		return
+	}
+	gp.serveInternal(w, r)
+}
+
+func (gp *GatewayProxy) serveInternal(w http.ResponseWriter, r *http.Request) {
 	// 1. Health check & Diagnostics
 	if r.URL.Path == "/healthz" {
 		w.Header().Set("Content-Type", "application/json")

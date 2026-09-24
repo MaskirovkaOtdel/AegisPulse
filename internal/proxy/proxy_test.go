@@ -451,3 +451,38 @@ func TestProxy_DemoPlayground_And_SwaggerDocs(t *testing.T) {
 		t.Fatalf("expected OpenAPI 3.0.3 spec, got %s", rrOpenAPI.Body.String()[:100])
 	}
 }
+
+func TestProxy_CORSMiddleware(t *testing.T) {
+	proxy, upstream, _, _ := setupTestProxy(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("UPSTREAM_OK"))
+	})
+	defer upstream.Close()
+
+	// 1. Test OPTIONS Preflight
+	reqOptions := httptest.NewRequest(http.MethodOptions, "/api/resource", nil)
+	reqOptions.Header.Set("Origin", "https://app.client.com")
+	rrOptions := httptest.NewRecorder()
+	proxy.ServeHTTP(rrOptions, reqOptions)
+
+	if rrOptions.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 for OPTIONS preflight, got %d", rrOptions.Code)
+	}
+	if rrOptions.Header().Get("Access-Control-Allow-Origin") != "*" {
+		t.Fatalf("expected Allow-Origin: *, got %s", rrOptions.Header().Get("Access-Control-Allow-Origin"))
+	}
+	if rrOptions.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatalf("expected X-Content-Type-Options: nosniff, got %s", rrOptions.Header().Get("X-Content-Type-Options"))
+	}
+
+	// 2. Test Security Headers on standard GET
+	reqGet := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rrGet := httptest.NewRecorder()
+	proxy.ServeHTTP(rrGet, reqGet)
+
+	if rrGet.Code != http.StatusOK {
+		t.Fatalf("expected 200 for /healthz, got %d", rrGet.Code)
+	}
+	if rrGet.Header().Get("X-Frame-Options") != "SAMEORIGIN" {
+		t.Fatalf("expected X-Frame-Options: SAMEORIGIN, got %s", rrGet.Header().Get("X-Frame-Options"))
+	}
+}
