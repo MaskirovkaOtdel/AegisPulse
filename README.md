@@ -100,6 +100,8 @@ cd AegisPulse
 go run ./cmd/gateway
 ```
 The gateway will start on `http://localhost:8080` and expose:
+- `GET /demo`: Interactive Web Playground (visual token bucket drain/fill and circuit breaker simulator).
+- `GET /docs`: OpenAPI 3.0 & Swagger UI interactive documentation.
 - `GET /healthz`: Health check & diagnostics.
 - `GET /metrics`: Prometheus metrics exporter.
 
