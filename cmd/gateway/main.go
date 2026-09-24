@@ -139,6 +139,8 @@ func main() {
 
 	go func() {
 		log.Printf("[HTTP] Gateway listening on http://0.0.0.0:%d", cfg.Server.Port)
+		log.Printf("[HTTP] Interactive Demo Playground: http://0.0.0.0:%d/demo", cfg.Server.Port)
+		log.Printf("[HTTP] OpenAPI 3.0 Documentation: http://0.0.0.0:%d/docs", cfg.Server.Port)
 		log.Printf("[HTTP] Prometheus metrics available at http://0.0.0.0:%d/metrics", cfg.Server.Port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("[FATAL] Gateway HTTP server failed: %v", err)

@@ -18,6 +18,7 @@ import (
 	"aegispulse/config"
 	"aegispulse/internal/cache"
 	"aegispulse/internal/crypto"
+	"aegispulse/internal/demo"
 	"aegispulse/internal/metrics"
 	"aegispulse/internal/ratelimit"
 	"aegispulse/internal/storage"
@@ -137,6 +138,18 @@ func (gp *GatewayProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 2. Metrics Endpoint
 	if r.URL.Path == "/metrics" {
 		gp.metrics.Handler().ServeHTTP(w, r)
+		return
+	}
+
+	// 2b. Interactive Demo Playground
+	if r.URL.Path == "/demo" || strings.HasPrefix(r.URL.Path, "/demo/") {
+		demo.PlaygroundHandler().ServeHTTP(w, r)
+		return
+	}
+
+	// 2c. OpenAPI 3.0 & Swagger Interactive Documentation
+	if r.URL.Path == "/docs" || strings.HasPrefix(r.URL.Path, "/docs/") {
+		demo.SwaggerHandler().ServeHTTP(w, r)
 		return
 	}
 

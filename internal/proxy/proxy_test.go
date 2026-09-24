@@ -402,3 +402,52 @@ func TestProxy_PanicAdminEndpointsAndWebhooks(t *testing.T) {
 		t.Fatalf("expected status to report burst_frozen:true")
 	}
 }
+
+func TestProxy_DemoPlayground_And_SwaggerDocs(t *testing.T) {
+	proxy, upstream, _, _ := setupTestProxy(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("UPSTREAM_OK"))
+	})
+	defer upstream.Close()
+
+	// 1. Test /demo
+	reqDemo := httptest.NewRequest(http.MethodGet, "/demo", nil)
+	rrDemo := httptest.NewRecorder()
+	proxy.ServeHTTP(rrDemo, reqDemo)
+
+	if rrDemo.Code != http.StatusOK {
+		t.Fatalf("expected 200 for /demo, got %d", rrDemo.Code)
+	}
+	if !strings.Contains(rrDemo.Header().Get("Content-Type"), "text/html") {
+		t.Fatalf("expected text/html for /demo, got %s", rrDemo.Header().Get("Content-Type"))
+	}
+	if !strings.Contains(rrDemo.Body.String(), "Dual-Threshold Token Bucket") {
+		t.Fatalf("expected token bucket visualizer in /demo response")
+	}
+
+	// 2. Test /docs
+	reqDocs := httptest.NewRequest(http.MethodGet, "/docs", nil)
+	rrDocs := httptest.NewRecorder()
+	proxy.ServeHTTP(rrDocs, reqDocs)
+
+	if rrDocs.Code != http.StatusOK {
+		t.Fatalf("expected 200 for /docs, got %d", rrDocs.Code)
+	}
+	if !strings.Contains(rrDocs.Header().Get("Content-Type"), "text/html") {
+		t.Fatalf("expected text/html for /docs, got %s", rrDocs.Header().Get("Content-Type"))
+	}
+
+	// 3. Test /docs/openapi.json
+	reqOpenAPI := httptest.NewRequest(http.MethodGet, "/docs/openapi.json", nil)
+	rrOpenAPI := httptest.NewRecorder()
+	proxy.ServeHTTP(rrOpenAPI, reqOpenAPI)
+
+	if rrOpenAPI.Code != http.StatusOK {
+		t.Fatalf("expected 200 for /docs/openapi.json, got %d", rrOpenAPI.Code)
+	}
+	if !strings.Contains(rrOpenAPI.Header().Get("Content-Type"), "application/json") {
+		t.Fatalf("expected application/json for /docs/openapi.json, got %s", rrOpenAPI.Header().Get("Content-Type"))
+	}
+	if !strings.Contains(rrOpenAPI.Body.String(), `"openapi": "3.0.3"`) {
+		t.Fatalf("expected OpenAPI 3.0.3 spec, got %s", rrOpenAPI.Body.String()[:100])
+	}
+}
