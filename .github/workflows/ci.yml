@@ -1,15 +1,43 @@
-name: AegisPulse CI
+name: AegisPulse CI & Security Gate
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, dev, contrib ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, dev ]
 
 jobs:
+  security-and-leak-audit:
+    name: Pre-Stage Leak & Identity Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan Tracked Files for Sensitive Patterns
+        run: |
+          echo "Running SVERG v4 sensitive file pattern scan..."
+          FORBIDDEN=$(git ls-files | grep -E '(\.env$|premium|secret|credentials|license-key)' || true)
+          if [ -n "$FORBIDDEN" ]; then
+            echo "::error::Sensitive or quarantined files detected in repository tree:"
+            echo "$FORBIDDEN"
+            exit 1
+          fi
+          echo "Zero sensitive file patterns matched."
+
+      - name: Report Commit Author Identity
+        run: |
+          AUTHOR_NAME=$(git log -1 --format='%an')
+          AUTHOR_EMAIL=$(git log -1 --format='%ae')
+          echo "Commit Author: $AUTHOR_NAME <$AUTHOR_EMAIL>"
+          echo "GitHub Actor: ${{ github.actor }}"
+
   test:
     name: Test (${{ matrix.os }}, Go ${{ matrix.go-version }})
     runs-on: ${{ matrix.os }}
+    needs: security-and-leak-audit
     strategy:
       fail-fast: false
       matrix:
@@ -54,5 +82,12 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
-          push: false
+          load: true
           tags: aegispulse:latest
+
+      - name: Run Hermetic Container Smoke Test
+        run: |
+          docker run -d --name aegis-ci-smoke -p 8080:8080 aegispulse:latest
+          sleep 2
+          curl -sf --retry 5 --retry-connrefused --retry-delay 2 http://127.0.0.1:8080/healthz | grep -q '"UP"'
+          docker stop aegis-ci-smoke && docker rm aegis-ci-smoke

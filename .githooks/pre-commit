@@ -1,0 +1,19 @@
+#!/usr/bin/env sh
+# AegisPulse SVERG v4 Pre-Commit Leak & Quality Gate
+
+FORBIDDEN=$(git diff --cached --name-only | grep -E '(\.env$|premium|local|secret|credentials|license-key)' || true)
+if [ -n "$FORBIDDEN" ]; then
+  echo "[CRITICAL BLOCK] Sensitive or quarantined file patterns detected in staged index:"
+  echo "$FORBIDDEN"
+  exit 1
+fi
+
+AUTHOR_NAME=$(git config user.name)
+AUTHOR_EMAIL=$(git config user.email)
+if [ "$AUTHOR_NAME" = "MaskirovkaOtdel" ] && [ "$AUTHOR_EMAIL" = "thod.efstathiadis@gmail.com" ]; then
+  echo "[PRE-COMMIT] Verified Owner identity: $AUTHOR_NAME <$AUTHOR_EMAIL>"
+else
+  echo "[PRE-COMMIT] Notice: Commit by $AUTHOR_NAME <$AUTHOR_EMAIL> (will require @MaskirovkaOtdel PR approval on GitHub)"
+fi
+
+exit 0

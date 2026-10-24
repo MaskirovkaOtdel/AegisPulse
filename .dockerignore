@@ -1,0 +1,7 @@
+.git
+.planning
+bin
+*.exe
+*.log
+*.out
+scratch

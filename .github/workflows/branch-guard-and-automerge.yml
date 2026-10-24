@@ -1,0 +1,112 @@
+name: Branch Gatekeeper, Identity Auto-Merge & Sync
+
+on:
+  push:
+    branches: [ dev, contrib, main ]
+  pull_request_target:
+    types: [ opened, synchronize, reopened, labeled ]
+    branches: [ main ]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  checks: read
+
+jobs:
+  evaluate-and-route:
+    name: Identity Verification & PR Routing
+    if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/contrib'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.x'
+          cache: true
+
+      - name: Run Pre-Merge Quality & Leak Checks
+        run: |
+          FORBIDDEN=$(git ls-files | grep -E '(\.env$|premium|secret|credentials|license-key)' || true)
+          if [ -n "$FORBIDDEN" ]; then
+            echo "::error::Blocked sensitive files in commit"
+            exit 1
+          fi
+          go vet ./...
+          go test -race ./...
+
+      - name: Verify Commit Author & Actor Identity
+        id: identity
+        run: |
+          ACTOR="${{ github.actor }}"
+          AUTHOR_NAME=$(git log -1 --format='%an')
+          AUTHOR_EMAIL=$(git log -1 --format='%ae')
+          COMMITTER_EMAIL=$(git log -1 --format='%ce')
+
+          echo "Actor: $ACTOR"
+          echo "Author: $AUTHOR_NAME <$AUTHOR_EMAIL>"
+          echo "Committer Email: $COMMITTER_EMAIL"
+
+          if [ "$ACTOR" = "MaskirovkaOtdel" ] && [ "$AUTHOR_EMAIL" = "thod.efstathiadis@gmail.com" ]; then
+            echo "is_owner=true" >> "$GITHUB_OUTPUT"
+            echo "Verified Owner identity confirmed (MaskirovkaOtdel <thod.efstathiadis@gmail.com>)."
+          else
+            echo "is_owner=false" >> "$GITHUB_OUTPUT"
+            echo "Third-party contributor detected. Routing to mandatory Owner confirmation PR."
+          fi
+
+      - name: Owner Fast-Track — Auto-Merge into main
+        if: steps.identity.outputs.is_owner == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SOURCE_BRANCH="${GITHUB_REF#refs/heads/}"
+          git config user.name "MaskirovkaOtdel"
+          git config user.email "thod.efstathiadis@gmail.com"
+
+          git fetch origin main
+          git checkout main
+          git merge --ff-only "origin/$SOURCE_BRANCH" || git merge "origin/$SOURCE_BRANCH" -m "chore(merge): auto-merge verified owner branch $SOURCE_BRANCH into main"
+          git push origin main
+
+      - name: Third-Party — Open PR & Request Owner Confirmation
+        if: steps.identity.outputs.is_owner == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SOURCE_BRANCH="${GITHUB_REF#refs/heads/}"
+          EXISTING_PR=$(gh pr list --head "$SOURCE_BRANCH" --base main --json number --jq '.[0].number' || true)
+          if [ -z "$EXISTING_PR" ]; then
+            gh pr create \
+              --base main \
+              --head "$SOURCE_BRANCH" \
+              --title "Contrib PR from $SOURCE_BRANCH by @${{ github.actor }}" \
+              --body "### Third-Party Contribution Gate\n\nSubmitted by \`@${{ github.actor }}\`.\nRequires explicit review and confirmation from **@MaskirovkaOtdel** (\`thod.efstathiadis@gmail.com\`) before merging into \`main\`."
+          else
+            echo "PR #$EXISTING_PR already open and awaiting @MaskirovkaOtdel confirmation."
+          fi
+
+  sync-branches:
+    name: Post-Merge Branch Auto-Sync (main -> dev)
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Synchronize dev with main
+        run: |
+          git config user.name "MaskirovkaOtdel"
+          git config user.email "thod.efstathiadis@gmail.com"
+          git fetch origin
+          git push origin HEAD:refs/heads/dev --force-with-lease || git push origin HEAD:refs/heads/dev
+          echo "Branch 'dev' synchronized to exact commit SHA of 'main' ($(git rev-parse --short HEAD))."

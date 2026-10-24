@@ -1,0 +1,146 @@
+name: Smart Semantic Versioning & Auto-Release
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  smart-release:
+    name: Evaluate Commits & Publish Filtered Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Full History & Tags
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Analyze Commits & Compute Semantic Version
+        id: semver
+        shell: bash
+        run: |
+          git fetch --tags --force
+
+          LAST_TAG=$(git tag -l "*v[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | head -n 1)
+          if [ -z "$LAST_TAG" ]; then
+            PREFIX="community-edition-v"
+            MAJOR=1
+            MINOR=0
+            PATCH=0
+            COMMIT_RANGE="HEAD"
+          else
+            PREFIX=$(echo "$LAST_TAG" | sed -E 's/[0-9]+\.[0-9]+\.[0-9]+$//')
+            VERSION_NUM=$(echo "$LAST_TAG" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+$')
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION_NUM"
+            COMMIT_RANGE="${LAST_TAG}..HEAD"
+          fi
+
+          echo "Last Tag: ${LAST_TAG:-none} (Prefix: $PREFIX, Base: $MAJOR.$MINOR.$PATCH)"
+
+          HEAD_TAG=$(git tag --points-at HEAD | grep -E 'v[0-9]+\.[0-9]+\.[0-9]+$' || true)
+          if [ -n "$HEAD_TAG" ]; then
+            echo "Already tagged at HEAD ($HEAD_TAG). Skipping."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          BUMP="none"
+          FEATURES=""
+          FIXES=""
+          MAINTENANCE=""
+
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            SHA=$(echo "$line" | awk '{print $1}')
+            MSG=$(echo "$line" | cut -d' ' -f2-)
+
+            if echo "$MSG" | grep -qiE '(\[skip release\]|\[no-release\])'; then
+              continue
+            fi
+
+            # 1. Major Changebreaker: 1.X.X -> 2.0.0
+            if echo "$MSG" | grep -qE '(BREAKING CHANGE:|^[a-zA-Z]+(\([^)]+\))?!:|\[major\])'; then
+              BUMP="major"
+              FEATURES="${FEATURES}\n- 💥 **BREAKING**: ${MSG} (\`${SHA}\`)"
+            # 2. Normal Feature Update: X.4.X -> X.5.0
+            elif echo "$MSG" | grep -qE '^(feat|update)(\([^)]+\))?:|\[minor\]'; then
+              [ "$BUMP" != "major" ] && BUMP="minor"
+              FEATURES="${FEATURES}\n- ✨ ${MSG} (\`${SHA}\`)"
+            # 3. Small Patch / Hotfix: X.X.1 -> X.X.2
+            elif echo "$MSG" | grep -qE '^(fix|hotfix|perf|security)(\([^)]+\))?:|\[patch\]'; then
+              if [ "$BUMP" = "none" ]; then
+                BUMP="patch"
+              fi
+              FIXES="${FIXES}\n- 🐛 ${MSG} (\`${SHA}\`)"
+            # 4. Non-release Maintenance (docs, chore, ci, style, test, refactor)
+            else
+              MAINTENANCE="${MAINTENANCE}\n- 🔧 ${MSG} (\`${SHA}\`)"
+            fi
+          done < <(git log $COMMIT_RANGE --oneline)
+
+          if [ "$BUMP" = "none" ]; then
+            echo "Only non-release commits (docs/chore/ci/test/refactor) detected since $LAST_TAG. Skipping tag & release."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          case "$BUMP" in
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          NEW_TAG="${PREFIX}${NEW_VERSION}"
+
+          echo "should_release=true" >> "$GITHUB_OUTPUT"
+          echo "new_tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
+          echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "bump_type=$BUMP" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## 🛡️ AegisPulse Release \`${NEW_TAG}\` (${BUMP^^} Update)"
+            echo ""
+            if [ -n "$FEATURES" ]; then
+              echo "### 🚀 Features & Functional Updates"
+              echo -e "$FEATURES"
+              echo ""
+            fi
+            if [ -n "$FIXES" ]; then
+              echo "### 🐛 Patches, Hotfixes & Hardening"
+              echo -e "$FIXES"
+              echo ""
+            fi
+            if [ -n "$MAINTENANCE" ]; then
+              echo "### 🔧 Documentation, CI & Maintenance"
+              echo -e "$MAINTENANCE"
+              echo ""
+            fi
+            if [ -n "$LAST_TAG" ]; then
+              echo "**Full Changelog**: \`${LAST_TAG}...${NEW_TAG}\`"
+            fi
+          } > release_notes.md
+
+      - name: Create Annotated Git Tag & Publish GitHub Release
+        if: steps.semver.outputs.should_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.semver.outputs.new_tag }}
+          name: "AegisPulse ${{ steps.semver.outputs.new_tag }}"
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

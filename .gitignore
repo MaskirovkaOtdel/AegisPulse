@@ -20,3 +20,8 @@ cover.out
 # Environment local secrets
 .env
 .env.local
+
+# Planning & scratch workspace state
+.planning/
+scratch/
+release_notes.md

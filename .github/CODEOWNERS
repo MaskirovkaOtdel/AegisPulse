@@ -1,0 +1,6 @@
+# AegisPulse Repository Code Owners
+# All third-party PRs targeting main require explicit review from MaskirovkaOtdel
+* @MaskirovkaOtdel
+/.github/ @MaskirovkaOtdel
+/internal/ @MaskirovkaOtdel
+/cmd/ @MaskirovkaOtdel
