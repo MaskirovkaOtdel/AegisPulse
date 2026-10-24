@@ -6,9 +6,10 @@ param(
 $ErrorActionPreference = "Stop"
 
 if ([string]::IsNullOrWhiteSpace($BaseTag)) {
-    $tags = git tag -l "*v*" --sort=-v:refname
-    if ($tags) {
-        $BaseTag = ($tags -split "`n")[0].Trim()
+    try {
+        $BaseTag = (git describe --tags --abbrev=0 --match "*v*" 2>$null).Trim()
+    } catch {
+        $BaseTag = ""
     }
 }
 
