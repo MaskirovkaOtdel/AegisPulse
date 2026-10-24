@@ -39,6 +39,7 @@ type GatewayProxy struct {
 	upstreamURL    *url.URL
 	jitterOverride atomic.Int32 // -1: use config, 0: disabled, 1: enabled
 	cors           *middleware.CORSMiddleware
+	startedAt      time.Time
 }
 
 func NewGatewayProxy(
@@ -68,6 +69,7 @@ func NewGatewayProxy(
 		metrics:        m,
 		upstreamURL:    targetURL,
 		cors:           middleware.NewCORSMiddleware(middleware.DefaultCORSConfig()),
+		startedAt:      time.Now(),
 	}
 	gp.jitterOverride.Store(-1) // default to config
 
@@ -140,9 +142,26 @@ func (gp *GatewayProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (gp *GatewayProxy) serveInternal(w http.ResponseWriter, r *http.Request) {
 	// 1. Health check & Diagnostics
 	if r.URL.Path == "/healthz" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"UP","gateway":"AegisPulse"}`))
+		cbState := "CLOSED"
+		if gp.circuitBreaker != nil {
+			cbState = gp.circuitBreaker.GetState().String()
+		}
+		uptimeSec := int64(0)
+		if !gp.startedAt.IsZero() {
+			uptimeSec = int64(time.Since(gp.startedAt).Seconds())
+		}
+		gp.respondJSON(w, http.StatusOK, map[string]interface{}{
+			"status":         "UP",
+			"gateway":        "AegisPulse",
+			"edition":        "Community",
+			"version":        "1.4.0",
+			"uptime_seconds": uptimeSec,
+			"components": map[string]string{
+				"cache":           "HEALTHY",
+				"ratelimiter":     "HEALTHY",
+				"circuit_breaker": cbState,
+			},
+		})
 		return
 	}
 

@@ -3,6 +3,7 @@ package proxy
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -474,7 +475,7 @@ func TestProxy_CORSMiddleware(t *testing.T) {
 		t.Fatalf("expected X-Content-Type-Options: nosniff, got %s", rrOptions.Header().Get("X-Content-Type-Options"))
 	}
 
-	// 2. Test Security Headers on standard GET
+	// 2. Test Security Headers & Rich Diagnostics on /healthz
 	reqGet := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rrGet := httptest.NewRecorder()
 	proxy.ServeHTTP(rrGet, reqGet)
@@ -484,5 +485,15 @@ func TestProxy_CORSMiddleware(t *testing.T) {
 	}
 	if rrGet.Header().Get("X-Frame-Options") != "SAMEORIGIN" {
 		t.Fatalf("expected X-Frame-Options: SAMEORIGIN, got %s", rrGet.Header().Get("X-Frame-Options"))
+	}
+	var hzMap map[string]interface{}
+	if err := json.Unmarshal(rrGet.Body.Bytes(), &hzMap); err != nil {
+		t.Fatalf("failed to parse /healthz JSON: %v", err)
+	}
+	if hzMap["status"] != "UP" || hzMap["version"] != "1.4.0" || hzMap["edition"] != "Community" {
+		t.Fatalf("unexpected /healthz payload: %+v", hzMap)
+	}
+	if _, ok := hzMap["components"].(map[string]interface{}); !ok {
+		t.Fatalf("expected components object in /healthz response: %+v", hzMap)
 	}
 }
