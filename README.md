@@ -139,6 +139,26 @@ go run ./cmd/chaos -mode=kill-drill -url="http://localhost:8080"
 
 ---
 
+## 🔒 CI/CD Governance, Identity Gatekeeper & Smart Semantic Versioning
+
+AegisPulse implements an automated GitHub Actions pipeline under `.github/workflows/`:
+
+1. **Pre-Merge Quality & Leak Gate (`ci.yml`)**:
+   - Scans tracked files for sensitive patterns, runs `go vet ./...`, race-enabled unit tests (`go test -v -race -cover ./...`), compiles binaries across OS matrices, and performs a hermetic Docker container healthcheck (`/healthz`).
+2. **Identity-Verified Branch Gatekeeper & Auto-Sync (`branch-guard-and-automerge.yml`)**:
+   - Commits pushed to `dev` / `contrib` are validated by the test suite first.
+   - Verified Owner commits (`MaskirovkaOtdel` / `thod.efstathiadis@gmail.com`) are automatically merged into `main`.
+   - Third-party contributor commits automatically open a Pull Request requiring explicit review and approval from `@MaskirovkaOtdel`.
+   - Post-merge auto-sync keeps `dev` and `main` on the exact same commit SHA.
+3. **Filtered Semantic Versioning & Auto-Release (`smart-release.yml`)**:
+   - Non-functional commits (`docs:`, `chore:`, `ci:`, `style:`, `test:`, `refactor:`) are filtered out from triggering redundant tags/releases.
+   - Release-worthy commits automatically compute the appropriate version bump and publish a 1:1 GitHub Release with categorized release notes:
+     - **Patch (`X.X.1 → X.X.2`)**: `fix(...)`, `hotfix(...)`, `perf(...)`, `security(...)`
+     - **Minor (`X.4.X → X.5.0`)**: `feat(...)`, `update(...)`
+     - **Major (`1.X.X → 2.0.0`)**: `BREAKING CHANGE:` or `feat!:`
+
+---
+
 ## 💼 Upgrading to AegisPulse Enterprise / Managed Cloud
 
 If your organization requires:
